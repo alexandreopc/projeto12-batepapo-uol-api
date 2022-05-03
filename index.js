@@ -76,11 +76,11 @@ app.post("/messages", async (req, res) => {
     }
     const nomePresente = await db.collection('participants').findOne({ name: req.headers.user })
     if (!nomePresente) {
-        return res.sendStatus(404);
+        return res.sendStatus(422);
     }
 
     try {
-        await db.collection('messages').insertOne({ from: req.headers.user, to: req.body.to, text: req.body.text, type: req.body.type, time: new Date().toLocaleTimeString() })
+        await db.collection('messages').insertOne({ from: req.headers.user, to: req.body.to, text: req.body.text, type: req.body.type, time: dayjs().format("HH:mm:ss") })
         return res.sendStatus(200);
     } catch (e) {
         console.error(e);
@@ -108,8 +108,45 @@ app.get("/messages", async (req, res) => {
 });
 
 
+app.post("/status", async (req, res) => {
+    try {
+        const nomePresente = await db.collection('participants').findOne({ name: req.headers.user })
+        if (!nomePresente) {
+            return res.sendStatus(404);
+        }
+        await db.collection('participants').updateOne({ name: req.headers.user }, { $set: { lastStatus: Date.now() } })
+        return res.sendStatus(200);
+    } catch (e) {
+        console.error(e);
+        return res.sendStatus(404);
+    }
+})
+
+
+async function removeUsuariosInativos() {
+    try {
+        const participants = await db.collection("participants").find().toArray();
+
+        const usuariosInativos = participants.filter(participant => {
+            if (Math.abs(participant.lastStatus - Date.now()) > 10000) {
+                return true;
+            }
+        });
+
+        for (let i = 0; i < usuariosInativos.length; i++) {
+            await db.collection('participants').deleteOne({ name: usuariosInativos[i].name });
+            await db.collection('messages').insertOne({
+                from: usuariosInativos[i].name,
+                to: 'Todos',
+                text: 'sai da sala...',
+                type: 'status',
+                time: dayjs().format('HH:mm:ss')
+            });
+        }
+    } catch (e) {
+        console.log(e);
+    }
+}
+setInterval(() => removeUsuariosInativos(), 15000);
 
 app.listen(5000, () => console.log("Servervidor ON na porta 5000"));
-
-//inverter o arry de msgs?
-//Date.now() gera um timestamp, É bem útil pra fazer contas matemáticas com data e será útil nos próximos requisitos (para expulsar usuários inativos do chat)
